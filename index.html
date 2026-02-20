@@ -6,24 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; }
-        input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border-radius: 5px; }
         button { background-color: #008CBA; color: white; border: none; cursor: pointer; font-size: 16px; }
         button:active { opacity: 0.8; }
-        #videoContainer { width: 100%; max-width: 400px; margin: 20px auto; display: none; }
-        video { width: 100%; height: auto; border: 1px solid #ccc; border-radius: 5px; }
-        #status { margin-top: 10px; color: #333; }
-        #pendingCount { font-weight: bold; }
-        .error { color: red; }
-        .success { color: green; }
-        .info { color: blue; }
-        .camera-btn { background-color: #4CAF50; }
+        .camera-btn { background-color: #4CAF50; font-size: 18px; padding: 15px; }
         .stop-btn { background-color: #f44336; }
-        .scan-result { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        #videoContainer { width: 100%; max-width: 400px; margin: 20px auto; display: none; }
+        video { width: 100%; height: auto; border: 2px solid #333; border-radius: 5px; }
+        canvas { display: none; }
+        #status { margin-top: 10px; padding: 10px; border-radius: 5px; }
+        #pendingCount { font-weight: bold; font-size: 24px; color: #4CAF50; }
+        .error { background-color: #ffebee; color: #c62828; }
+        .success { background-color: #e8f5e8; color: #2e7d32; }
+        .info { background-color: #e3f2fd; color: #1565c0; }
+        .scan-result { padding: 15px; margin: 10px 0; border-radius: 5px; background-color: #f5f5f5; }
+        .header { text-align: center; color: #333; }
+        hr { border: 1px solid #ddd; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
-    <h2>📚 Student Attendance Scanner</h2>
+    <h2 class="header">📚 Student Attendance Scanner</h2>
     
     <div id="studentInfo">
         <label>Your Full Name:</label>
@@ -37,15 +40,19 @@
     
     <hr>
     
-    <!-- Camera controls - ALWAYS VISIBLE once info is saved -->
     <div id="cameraControls" style="display:none;">
         <h3>📷 Scan QR Code</h3>
-        <button onclick="startScanner()" class="camera-btn" id="startCameraBtn">▶️ Start Camera</button>
-        <button onclick="stopScanner()" class="stop-btn" id="stopCameraBtn" style="display:none;">⏹️ Stop Camera</button>
+        
+        <div id="cameraStatus" class="info">Ready to scan</div>
+        
+        <button onclick="startScanner()" class="camera-btn" id="startCameraBtn">▶️ START CAMERA</button>
+        <button onclick="stopScanner()" class="stop-btn" id="stopCameraBtn" style="display:none;">⏹️ STOP CAMERA</button>
         
         <div id="videoContainer">
             <video id="video" playsinline></video>
         </div>
+        
+        <canvas id="canvas"></canvas>
         
         <div id="scanResult" class="scan-result"></div>
     </div>
@@ -53,19 +60,16 @@
     <hr>
     
     <div>
-        <h3>📋 Pending Attendance: <span id="pendingCount">0</span></h3>
-        <button onclick="syncAttendance()" style="background-color: #ff9800;">🔄 Sync Now (if online)</button>
+        <h3>📋 Pending Records: <span id="pendingCount">0</span></h3>
+        <button onclick="syncAttendance()" style="background-color: #ff9800;">🔄 SYNC NOW</button>
         <button onclick="viewPending()" style="background-color: #9c27b0; color: white;">👁️ View Pending</button>
-        <button onclick="clearAllData()" style="background-color: #f44336;">🗑️ Clear All Data</button>
+        <button onclick="clearAllData()" style="background-color: #f44336;">🗑️ Clear All</button>
     </div>
     
     <div id="status"></div>
     <pre id="pendingList" style="background:#f4f4f4; padding:10px; display:none; overflow:auto;"></pre>
 
     <script>
-        // =============================================
-        // YOUR APPS SCRIPT URL
-        // =============================================
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzgYw-2YMjmZKQl83r11ya9NoUkpBFA4NdF5RolHqwcEYlPHjBCFLXoVxosMcEaZT-8sw/exec';
         
         const PENDING_QUEUE_KEY = 'attendanceQueue';
@@ -75,7 +79,6 @@
         let scanning = false;
         let scanTimeout = null;
         
-        // Load saved info when page opens
         window.onload = function() {
             loadStudentInfo();
             updatePendingCount();
@@ -94,7 +97,7 @@
         function checkSavedInfo() {
             if (localStorage.getItem(STUDENT_INFO_KEY)) {
                 document.getElementById('cameraControls').style.display = 'block';
-                document.getElementById('status').innerHTML = '<span class="success">✅ Ready to scan! Click "Start Camera"</span>';
+                document.getElementById('cameraStatus').innerHTML = '✅ Info saved - click START CAMERA';
             }
         }
         
@@ -108,12 +111,9 @@
             }
             
             localStorage.setItem(STUDENT_INFO_KEY, JSON.stringify({ name, id }));
-            
-            // Show camera controls
             document.getElementById('cameraControls').style.display = 'block';
-            document.getElementById('status').innerHTML = '<span class="success">✅ Info saved! Click "Start Camera" to begin scanning.</span>';
-            
-            alert('Info saved successfully!');
+            document.getElementById('cameraStatus').innerHTML = '✅ Ready! Click START CAMERA';
+            document.getElementById('status').innerHTML = '<span class="success">✅ Info saved successfully!</span>';
         }
         
         function startScanner() {
@@ -122,10 +122,10 @@
                 return;
             }
             
-            // Hide start button, show stop button
             document.getElementById('startCameraBtn').style.display = 'none';
             document.getElementById('stopCameraBtn').style.display = 'block';
             document.getElementById('videoContainer').style.display = 'block';
+            document.getElementById('cameraStatus').innerHTML = '📱 Requesting camera...';
             
             const video = document.getElementById('video');
             
@@ -133,21 +133,13 @@
                 stopScanner();
             }
             
-            document.getElementById('status').innerHTML = '<span class="info">📱 Requesting camera access...</span>';
-            
-            // Check if on iOS
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            
-            if (isIOS) {
-                document.getElementById('status').innerHTML = '<span class="info">📱 iOS detected. Please allow camera when prompted.</span>';
-            }
-            
             const constraints = {
                 video: {
                     facingMode: 'environment',
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
-                }
+                },
+                audio: false
             };
             
             navigator.mediaDevices.getUserMedia(constraints)
@@ -162,40 +154,29 @@
                 })
                 .then(() => {
                     scanning = true;
-                    document.getElementById('status').innerHTML = '<span class="success">✅ Camera ready! Point at QR code.</span>';
+                    document.getElementById('cameraStatus').innerHTML = '✅ Camera active - point at QR code';
+                    document.getElementById('status').innerHTML = '<span class="success">✅ Camera working! Scan QR code.</span>';
                     scanFrame();
                 })
                 .catch(err => {
                     console.error('Camera error:', err);
                     
-                    // Reset buttons
                     document.getElementById('startCameraBtn').style.display = 'block';
                     document.getElementById('stopCameraBtn').style.display = 'none';
                     document.getElementById('videoContainer').style.display = 'none';
                     
-                    let errorMsg = '❌ Cannot access camera. ';
+                    let errorMsg = '';
                     
                     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                        errorMsg = '❌ Camera permission denied.\n\n';
-                        if (isIOS) {
-                            errorMsg += '📱 ON iPHONE:\n';
-                            errorMsg += '1. Go to Settings → Safari → Camera\n';
-                            errorMsg += '2. Select "Allow"\n';
-                            errorMsg += '3. Also try: Settings → Privacy → Camera → Safari\n';
-                            errorMsg += '4. Refresh this page and try again';
-                        } else {
-                            errorMsg += '🔴 ON ANDROID:\n';
-                            errorMsg += '1. Tap the lock icon in address bar\n';
-                            errorMsg += '2. Tap "Site settings"\n';
-                            errorMsg += '3. Set Camera to "Allow"\n';
-                            errorMsg += '4. Reload page';
-                        }
+                        errorMsg = '❌ Please allow camera access when prompted';
+                    } else if (err.name === 'NotFoundError') {
+                        errorMsg = '❌ No camera found on this device';
                     } else {
-                        errorMsg += 'Error: ' + err.message;
+                        errorMsg = '❌ Error: ' + err.message;
                     }
                     
-                    alert(errorMsg);
-                    document.getElementById('status').innerHTML = '<span class="error">' + errorMsg.replace(/\n/g, '<br>') + '</span>';
+                    document.getElementById('cameraStatus').innerHTML = errorMsg;
+                    document.getElementById('status').innerHTML = '<span class="error">' + errorMsg + '</span>';
                 });
         }
         
@@ -215,7 +196,7 @@
             document.getElementById('videoContainer').style.display = 'none';
             document.getElementById('startCameraBtn').style.display = 'block';
             document.getElementById('stopCameraBtn').style.display = 'none';
-            document.getElementById('status').innerHTML = '<span class="info">📷 Camera stopped</span>';
+            document.getElementById('cameraStatus').innerHTML = 'Camera stopped - click START CAMERA';
         }
         
         function scanFrame() {
@@ -223,7 +204,18 @@
             
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
+            
+            if (!canvas) {
+                console.error('Canvas not found');
+                return;
+            }
+            
             const ctx = canvas.getContext('2d');
+            
+            if (!ctx) {
+                console.error('Could not get canvas context');
+                return;
+            }
             
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 canvas.width = video.videoWidth;
@@ -265,18 +257,19 @@
                     lectureId: lectureData.lectureId,
                     course: lectureData.course,
                     location: lectureData.location || 'Unknown',
-                    date: lectureData.date || 'Unknown',
-                    time: lectureData.time || 'Unknown'
+                    date: lectureData.date || 'Unknown'
                 };
                 
                 addToQueue(record);
                 
                 document.getElementById('scanResult').innerHTML = 
-                    `<span class="success">✅ Recorded: ${lectureData.course}<br>📍 ${lectureData.location || 'Unknown'}<br>📅 ${lectureData.date || 'Unknown'}</span>`;
+                    `<strong>✅ RECORDED!</strong><br>
+                     📚 ${lectureData.course}<br>
+                     📍 ${lectureData.location || 'Unknown'}<br>
+                     📅 ${lectureData.date || 'Unknown'}`;
                 
                 updatePendingCount();
                 
-                // Ask to scan another
                 setTimeout(() => {
                     if (confirm('Scan another QR code?')) {
                         startScanner();
@@ -284,7 +277,7 @@
                 }, 1000);
                 
             } catch (e) {
-                alert('Invalid QR code. Please scan teacher\'s QR.');
+                alert('Invalid QR code');
                 console.error(e);
             }
         }
@@ -318,7 +311,7 @@
         }
         
         function clearAllData() {
-            if (confirm('Delete all saved info and attendance records?')) {
+            if (confirm('Delete ALL data?')) {
                 localStorage.removeItem(STUDENT_INFO_KEY);
                 localStorage.removeItem(PENDING_QUEUE_KEY);
                 location.reload();
@@ -329,7 +322,7 @@
             const queue = getQueue();
             
             if (queue.length === 0) {
-                alert('No pending records to sync.');
+                alert('No records to sync');
                 return;
             }
             
@@ -347,7 +340,7 @@
                             `<span class="error">⚠️ Synced ${successCount}, failed ${failedIndices.length}</span>`;
                     } else {
                         localStorage.removeItem(PENDING_QUEUE_KEY);
-                        document.getElementById('status').innerHTML = '<span class="success">✅ All synced successfully!</span>';
+                        document.getElementById('status').innerHTML = '<span class="success">✅ All synced!</span>';
                     }
                     updatePendingCount();
                     return;
