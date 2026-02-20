@@ -13,20 +13,18 @@
         .stop-btn { background-color: #f44336; }
         #videoContainer { width: 100%; max-width: 400px; margin: 20px auto; display: none; }
         video { width: 100%; height: auto; border: 2px solid #333; border-radius: 5px; }
-        canvas { display: none; }
+        #canvas { display: none; }
         #status { margin-top: 10px; padding: 10px; border-radius: 5px; }
         #pendingCount { font-weight: bold; font-size: 24px; color: #4CAF50; }
         .error { background-color: #ffebee; color: #c62828; }
         .success { background-color: #e8f5e8; color: #2e7d32; }
         .info { background-color: #e3f2fd; color: #1565c0; }
         .scan-result { padding: 15px; margin: 10px 0; border-radius: 5px; background-color: #f5f5f5; }
-        .header { text-align: center; color: #333; }
-        hr { border: 1px solid #ddd; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
-    <h2 class="header">📚 Student Attendance Scanner</h2>
+    <h2 style="text-align: center;">📚 Student Attendance Scanner</h2>
     
     <div id="studentInfo">
         <label>Your Full Name:</label>
@@ -43,18 +41,18 @@
     <div id="cameraControls" style="display:none;">
         <h3>📷 Scan QR Code</h3>
         
-        <div id="cameraStatus" class="info">Ready to scan</div>
+        <div id="cameraStatus" style="background-color: #e3f2fd; color: #1565c0; padding: 10px; border-radius: 5px;">Ready to scan</div>
         
-        <button onclick="startScanner()" class="camera-btn" id="startCameraBtn">▶️ START CAMERA</button>
-        <button onclick="stopScanner()" class="stop-btn" id="stopCameraBtn" style="display:none;">⏹️ STOP CAMERA</button>
+        <button onclick="startScanner()" style="background-color: #4CAF50; font-size: 18px; padding: 15px;" id="startCameraBtn">▶️ START CAMERA</button>
+        <button onclick="stopScanner()" style="background-color: #f44336; display: none;" id="stopCameraBtn">⏹️ STOP CAMERA</button>
         
         <div id="videoContainer">
             <video id="video" playsinline></video>
         </div>
         
-        <canvas id="canvas"></canvas>
+        <canvas id="canvas" style="display: none;"></canvas>
         
-        <div id="scanResult" class="scan-result"></div>
+        <div id="scanResult" style="padding: 15px; margin: 10px 0; border-radius: 5px; background-color: #f5f5f5;"></div>
     </div>
     
     <hr>
@@ -70,6 +68,9 @@
     <pre id="pendingList" style="background:#f4f4f4; padding:10px; display:none; overflow:auto;"></pre>
 
     <script>
+        // =============================================
+        // YOUR APPS SCRIPT URL
+        // =============================================
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzgYw-2YMjmZKQl83r11ya9NoUkpBFA4NdF5RolHqwcEYlPHjBCFLXoVxosMcEaZT-8sw/exec';
         
         const PENDING_QUEUE_KEY = 'attendanceQueue';
@@ -79,31 +80,48 @@
         let scanning = false;
         let scanTimeout = null;
         
-        window.onload = function() {
+        // Wait for page to fully load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded');
             loadStudentInfo();
             updatePendingCount();
             checkSavedInfo();
-        };
+        });
         
         function loadStudentInfo() {
             const saved = localStorage.getItem(STUDENT_INFO_KEY);
             if (saved) {
-                const info = JSON.parse(saved);
-                document.getElementById('studentName').value = info.name || '';
-                document.getElementById('studentId').value = info.id || '';
+                try {
+                    const info = JSON.parse(saved);
+                    document.getElementById('studentName').value = info.name || '';
+                    document.getElementById('studentId').value = info.id || '';
+                } catch (e) {
+                    console.error('Error loading saved info:', e);
+                }
             }
         }
         
         function checkSavedInfo() {
             if (localStorage.getItem(STUDENT_INFO_KEY)) {
-                document.getElementById('cameraControls').style.display = 'block';
-                document.getElementById('cameraStatus').innerHTML = '✅ Info saved - click START CAMERA';
+                const cameraControls = document.getElementById('cameraControls');
+                if (cameraControls) {
+                    cameraControls.style.display = 'block';
+                }
+                const cameraStatus = document.getElementById('cameraStatus');
+                if (cameraStatus) {
+                    cameraStatus.innerHTML = '✅ Info saved - click START CAMERA';
+                }
             }
         }
         
         function saveStudentInfo() {
-            const name = document.getElementById('studentName').value.trim();
-            const id = document.getElementById('studentId').value.trim();
+            const nameInput = document.getElementById('studentName');
+            const idInput = document.getElementById('studentId');
+            
+            if (!nameInput || !idInput) return;
+            
+            const name = nameInput.value.trim();
+            const id = idInput.value.trim();
             
             if (!name || !id) {
                 alert('Please enter both name and ID');
@@ -111,9 +129,21 @@
             }
             
             localStorage.setItem(STUDENT_INFO_KEY, JSON.stringify({ name, id }));
-            document.getElementById('cameraControls').style.display = 'block';
-            document.getElementById('cameraStatus').innerHTML = '✅ Ready! Click START CAMERA';
-            document.getElementById('status').innerHTML = '<span class="success">✅ Info saved successfully!</span>';
+            
+            const cameraControls = document.getElementById('cameraControls');
+            if (cameraControls) {
+                cameraControls.style.display = 'block';
+            }
+            
+            const cameraStatus = document.getElementById('cameraStatus');
+            if (cameraStatus) {
+                cameraStatus.innerHTML = '✅ Ready! Click START CAMERA';
+            }
+            
+            const status = document.getElementById('status');
+            if (status) {
+                status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ Info saved successfully!</span>';
+            }
         }
         
         function startScanner() {
@@ -122,10 +152,15 @@
                 return;
             }
             
-            document.getElementById('startCameraBtn').style.display = 'none';
-            document.getElementById('stopCameraBtn').style.display = 'block';
-            document.getElementById('videoContainer').style.display = 'block';
-            document.getElementById('cameraStatus').innerHTML = '📱 Requesting camera...';
+            const startBtn = document.getElementById('startCameraBtn');
+            const stopBtn = document.getElementById('stopCameraBtn');
+            const videoContainer = document.getElementById('videoContainer');
+            const cameraStatus = document.getElementById('cameraStatus');
+            
+            if (startBtn) startBtn.style.display = 'none';
+            if (stopBtn) stopBtn.style.display = 'block';
+            if (videoContainer) videoContainer.style.display = 'block';
+            if (cameraStatus) cameraStatus.innerHTML = '📱 Requesting camera...';
             
             const video = document.getElementById('video');
             
@@ -145,25 +180,33 @@
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
                     videoStream = stream;
-                    video.srcObject = stream;
-                    video.setAttribute('playsinline', true);
-                    video.setAttribute('autoplay', true);
-                    video.setAttribute('muted', true);
-                    
-                    return video.play();
+                    if (video) {
+                        video.srcObject = stream;
+                        video.setAttribute('playsinline', true);
+                        video.setAttribute('autoplay', true);
+                        video.setAttribute('muted', true);
+                        
+                        return video.play();
+                    }
                 })
                 .then(() => {
                     scanning = true;
-                    document.getElementById('cameraStatus').innerHTML = '✅ Camera active - point at QR code';
-                    document.getElementById('status').innerHTML = '<span class="success">✅ Camera working! Scan QR code.</span>';
-                    scanFrame();
+                    if (cameraStatus) cameraStatus.innerHTML = '✅ Camera active - point at QR code';
+                    
+                    const status = document.getElementById('status');
+                    if (status) {
+                        status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ Camera working! Scan QR code.</span>';
+                    }
+                    
+                    // Start scanning
+                    requestAnimationFrame(scanFrame);
                 })
                 .catch(err => {
                     console.error('Camera error:', err);
                     
-                    document.getElementById('startCameraBtn').style.display = 'block';
-                    document.getElementById('stopCameraBtn').style.display = 'none';
-                    document.getElementById('videoContainer').style.display = 'none';
+                    if (startBtn) startBtn.style.display = 'block';
+                    if (stopBtn) stopBtn.style.display = 'none';
+                    if (videoContainer) videoContainer.style.display = 'none';
                     
                     let errorMsg = '';
                     
@@ -175,28 +218,13 @@
                         errorMsg = '❌ Error: ' + err.message;
                     }
                     
-                    document.getElementById('cameraStatus').innerHTML = errorMsg;
-                    document.getElementById('status').innerHTML = '<span class="error">' + errorMsg + '</span>';
+                    if (cameraStatus) cameraStatus.innerHTML = errorMsg;
+                    
+                    const status = document.getElementById('status');
+                    if (status) {
+                        status.innerHTML = '<span style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 5px; display: block;">' + errorMsg + '</span>';
+                    }
                 });
-        }
-        
-        function stopScanner() {
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
-            }
-            
-            scanning = false;
-            if (scanTimeout) {
-                cancelAnimationFrame(scanTimeout);
-                scanTimeout = null;
-            }
-            
-            document.getElementById('video').srcObject = null;
-            document.getElementById('videoContainer').style.display = 'none';
-            document.getElementById('startCameraBtn').style.display = 'block';
-            document.getElementById('stopCameraBtn').style.display = 'none';
-            document.getElementById('cameraStatus').innerHTML = 'Camera stopped - click START CAMERA';
         }
         
         function scanFrame() {
@@ -205,8 +233,8 @@
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
             
-            if (!canvas) {
-                console.error('Canvas not found');
+            if (!video || !canvas) {
+                console.error('Video or canvas element not found');
                 return;
             }
             
@@ -221,9 +249,9 @@
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 
                 try {
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     const code = jsQR(imageData.data, imageData.width, imageData.height);
                     
                     if (code) {
@@ -237,6 +265,38 @@
             }
             
             scanTimeout = requestAnimationFrame(scanFrame);
+        }
+        
+        function stopScanner() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => {
+                    if (track.readyState === 'live') {
+                        track.stop();
+                    }
+                });
+                videoStream = null;
+            }
+            
+            scanning = false;
+            if (scanTimeout) {
+                cancelAnimationFrame(scanTimeout);
+                scanTimeout = null;
+            }
+            
+            const video = document.getElementById('video');
+            if (video) {
+                video.srcObject = null;
+            }
+            
+            const videoContainer = document.getElementById('videoContainer');
+            const startBtn = document.getElementById('startCameraBtn');
+            const stopBtn = document.getElementById('stopCameraBtn');
+            const cameraStatus = document.getElementById('cameraStatus');
+            
+            if (videoContainer) videoContainer.style.display = 'none';
+            if (startBtn) startBtn.style.display = 'block';
+            if (stopBtn) stopBtn.style.display = 'none';
+            if (cameraStatus) cameraStatus.innerHTML = 'Camera stopped - click START CAMERA';
         }
         
         function processScannedCode(data) {
@@ -262,11 +322,14 @@
                 
                 addToQueue(record);
                 
-                document.getElementById('scanResult').innerHTML = 
-                    `<strong>✅ RECORDED!</strong><br>
-                     📚 ${lectureData.course}<br>
-                     📍 ${lectureData.location || 'Unknown'}<br>
-                     📅 ${lectureData.date || 'Unknown'}`;
+                const scanResult = document.getElementById('scanResult');
+                if (scanResult) {
+                    scanResult.innerHTML = 
+                        `<strong>✅ RECORDED!</strong><br>
+                         📚 ${lectureData.course}<br>
+                         📍 ${lectureData.location || 'Unknown'}<br>
+                         📅 ${lectureData.date || 'Unknown'}`;
+                }
                 
                 updatePendingCount();
                 
@@ -277,14 +340,18 @@
                 }, 1000);
                 
             } catch (e) {
-                alert('Invalid QR code');
+                alert('Invalid QR code. Please scan teacher\'s QR.');
                 console.error(e);
             }
         }
         
         function getQueue() {
-            const queue = localStorage.getItem(PENDING_QUEUE_KEY);
-            return queue ? JSON.parse(queue) : [];
+            try {
+                const queue = localStorage.getItem(PENDING_QUEUE_KEY);
+                return queue ? JSON.parse(queue) : [];
+            } catch (e) {
+                return [];
+            }
         }
         
         function addToQueue(record) {
@@ -295,18 +362,23 @@
         
         function updatePendingCount() {
             const queue = getQueue();
-            document.getElementById('pendingCount').innerText = queue.length;
+            const pendingSpan = document.getElementById('pendingCount');
+            if (pendingSpan) {
+                pendingSpan.innerText = queue.length;
+            }
         }
         
         function viewPending() {
             const queue = getQueue();
             const pre = document.getElementById('pendingList');
             
-            if (pre.style.display === 'none' || pre.style.display === '') {
-                pre.style.display = 'block';
-                pre.textContent = JSON.stringify(queue, null, 2);
-            } else {
-                pre.style.display = 'none';
+            if (pre) {
+                if (pre.style.display === 'none' || pre.style.display === '') {
+                    pre.style.display = 'block';
+                    pre.textContent = JSON.stringify(queue, null, 2);
+                } else {
+                    pre.style.display = 'none';
+                }
             }
         }
         
@@ -326,7 +398,10 @@
                 return;
             }
             
-            document.getElementById('status').innerHTML = '<span class="info">🔄 Syncing...</span>';
+            const status = document.getElementById('status');
+            if (status) {
+                status.innerHTML = '<span style="background-color: #e3f2fd; color: #1565c0; padding: 10px; border-radius: 5px; display: block;">🔄 Syncing...</span>';
+            }
             
             let successCount = 0;
             let failedIndices = [];
@@ -336,11 +411,14 @@
                     if (failedIndices.length > 0) {
                         const newQueue = queue.filter((_, i) => failedIndices.includes(i));
                         localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(newQueue));
-                        document.getElementById('status').innerHTML = 
-                            `<span class="error">⚠️ Synced ${successCount}, failed ${failedIndices.length}</span>`;
+                        if (status) {
+                            status.innerHTML = `<span style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 5px; display: block;">⚠️ Synced ${successCount}, failed ${failedIndices.length}</span>`;
+                        }
                     } else {
                         localStorage.removeItem(PENDING_QUEUE_KEY);
-                        document.getElementById('status').innerHTML = '<span class="success">✅ All synced!</span>';
+                        if (status) {
+                            status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ All synced!</span>';
+                        }
                     }
                     updatePendingCount();
                     return;
