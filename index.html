@@ -69,9 +69,9 @@
 
     <script>
         // =============================================
-        // YOUR APPS SCRIPT URL
+        // YOUR APPS SCRIPT URL - Updated
         // =============================================
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzgYw-2YMjmZKQl83r11ya9NoUkpBFA4NdF5RolHqwcEYlPHjBCFLXoVxosMcEaZT-8sw/exec';
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby81zfyfKelRGjQQ2cqcKqLUwWmBKH5_8HOjAUX7r3CO-4tG_rl5LEjfrMeqmo6588IwQ/exec';
         
         const PENDING_QUEUE_KEY = 'attendanceQueue';
         const STUDENT_INFO_KEY = 'studentInfo';
@@ -80,9 +80,7 @@
         let scanning = false;
         let scanTimeout = null;
         
-        // Wait for page to fully load
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Page loaded');
             loadStudentInfo();
             updatePendingCount();
             checkSavedInfo();
@@ -104,24 +102,13 @@
         function checkSavedInfo() {
             if (localStorage.getItem(STUDENT_INFO_KEY)) {
                 const cameraControls = document.getElementById('cameraControls');
-                if (cameraControls) {
-                    cameraControls.style.display = 'block';
-                }
-                const cameraStatus = document.getElementById('cameraStatus');
-                if (cameraStatus) {
-                    cameraStatus.innerHTML = '✅ Info saved - click START CAMERA';
-                }
+                if (cameraControls) cameraControls.style.display = 'block';
             }
         }
         
         function saveStudentInfo() {
-            const nameInput = document.getElementById('studentName');
-            const idInput = document.getElementById('studentId');
-            
-            if (!nameInput || !idInput) return;
-            
-            const name = nameInput.value.trim();
-            const id = idInput.value.trim();
+            const name = document.getElementById('studentName').value.trim();
+            const id = document.getElementById('studentId').value.trim();
             
             if (!name || !id) {
                 alert('Please enter both name and ID');
@@ -131,18 +118,11 @@
             localStorage.setItem(STUDENT_INFO_KEY, JSON.stringify({ name, id }));
             
             const cameraControls = document.getElementById('cameraControls');
-            if (cameraControls) {
-                cameraControls.style.display = 'block';
-            }
-            
-            const cameraStatus = document.getElementById('cameraStatus');
-            if (cameraStatus) {
-                cameraStatus.innerHTML = '✅ Ready! Click START CAMERA';
-            }
+            if (cameraControls) cameraControls.style.display = 'block';
             
             const status = document.getElementById('status');
             if (status) {
-                status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ Info saved successfully!</span>';
+                status.innerHTML = '<span class="success">✅ Info saved successfully!</span>';
             }
         }
         
@@ -192,14 +172,7 @@
                 .then(() => {
                     scanning = true;
                     if (cameraStatus) cameraStatus.innerHTML = '✅ Camera active - point at QR code';
-                    
-                    const status = document.getElementById('status');
-                    if (status) {
-                        status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ Camera working! Scan QR code.</span>';
-                    }
-                    
-                    // Start scanning
-                    requestAnimationFrame(scanFrame);
+                    scanFrame();
                 })
                 .catch(err => {
                     console.error('Camera error:', err);
@@ -208,22 +181,14 @@
                     if (stopBtn) stopBtn.style.display = 'none';
                     if (videoContainer) videoContainer.style.display = 'none';
                     
-                    let errorMsg = '';
-                    
-                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                        errorMsg = '❌ Please allow camera access when prompted';
-                    } else if (err.name === 'NotFoundError') {
-                        errorMsg = '❌ No camera found on this device';
+                    let errorMsg = '❌ Camera error: ';
+                    if (err.name === 'NotAllowedError') {
+                        errorMsg = '❌ Please allow camera access';
                     } else {
-                        errorMsg = '❌ Error: ' + err.message;
+                        errorMsg += err.message;
                     }
                     
                     if (cameraStatus) cameraStatus.innerHTML = errorMsg;
-                    
-                    const status = document.getElementById('status');
-                    if (status) {
-                        status.innerHTML = '<span style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 5px; display: block;">' + errorMsg + '</span>';
-                    }
                 });
         }
         
@@ -234,14 +199,14 @@
             const canvas = document.getElementById('canvas');
             
             if (!video || !canvas) {
-                console.error('Video or canvas element not found');
+                scanTimeout = requestAnimationFrame(scanFrame);
                 return;
             }
             
             const ctx = canvas.getContext('2d');
             
             if (!ctx) {
-                console.error('Could not get canvas context');
+                scanTimeout = requestAnimationFrame(scanFrame);
                 return;
             }
             
@@ -269,11 +234,7 @@
         
         function stopScanner() {
             if (videoStream) {
-                videoStream.getTracks().forEach(track => {
-                    if (track.readyState === 'live') {
-                        track.stop();
-                    }
-                });
+                videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
             }
             
@@ -284,9 +245,7 @@
             }
             
             const video = document.getElementById('video');
-            if (video) {
-                video.srcObject = null;
-            }
+            if (video) video.srcObject = null;
             
             const videoContainer = document.getElementById('videoContainer');
             const startBtn = document.getElementById('startCameraBtn');
@@ -296,7 +255,7 @@
             if (videoContainer) videoContainer.style.display = 'none';
             if (startBtn) startBtn.style.display = 'block';
             if (stopBtn) stopBtn.style.display = 'none';
-            if (cameraStatus) cameraStatus.innerHTML = 'Camera stopped - click START CAMERA';
+            if (cameraStatus) cameraStatus.innerHTML = 'Camera stopped';
         }
         
         function processScannedCode(data) {
@@ -333,14 +292,8 @@
                 
                 updatePendingCount();
                 
-                setTimeout(() => {
-                    if (confirm('Scan another QR code?')) {
-                        startScanner();
-                    }
-                }, 1000);
-                
             } catch (e) {
-                alert('Invalid QR code. Please scan teacher\'s QR.');
+                alert('Invalid QR code');
                 console.error(e);
             }
         }
@@ -363,9 +316,7 @@
         function updatePendingCount() {
             const queue = getQueue();
             const pendingSpan = document.getElementById('pendingCount');
-            if (pendingSpan) {
-                pendingSpan.innerText = queue.length;
-            }
+            if (pendingSpan) pendingSpan.innerText = queue.length;
         }
         
         function viewPending() {
@@ -399,27 +350,14 @@
             }
             
             const status = document.getElementById('status');
-            if (status) {
-                status.innerHTML = '<span style="background-color: #e3f2fd; color: #1565c0; padding: 10px; border-radius: 5px; display: block;">🔄 Syncing...</span>';
-            }
+            if (status) status.innerHTML = '<span class="info">🔄 Syncing...</span>';
             
             let successCount = 0;
-            let failedIndices = [];
             
             function syncNext(index) {
                 if (index >= queue.length) {
-                    if (failedIndices.length > 0) {
-                        const newQueue = queue.filter((_, i) => failedIndices.includes(i));
-                        localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(newQueue));
-                        if (status) {
-                            status.innerHTML = `<span style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 5px; display: block;">⚠️ Synced ${successCount}, failed ${failedIndices.length}</span>`;
-                        }
-                    } else {
-                        localStorage.removeItem(PENDING_QUEUE_KEY);
-                        if (status) {
-                            status.innerHTML = '<span style="background-color: #e8f5e8; color: #2e7d32; padding: 10px; border-radius: 5px; display: block;">✅ All synced!</span>';
-                        }
-                    }
+                    localStorage.removeItem(PENDING_QUEUE_KEY);
+                    if (status) status.innerHTML = '<span class="success">✅ All synced!</span>';
                     updatePendingCount();
                     return;
                 }
@@ -442,7 +380,6 @@
                 })
                 .catch(error => {
                     console.error('Sync failed:', error);
-                    failedIndices.push(index);
                     syncNext(index + 1);
                 });
             }
