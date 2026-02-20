@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Attendance Scanner</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; }
+        input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+        button { background-color: #008CBA; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:active { opacity: 0.8; }
+        #videoContainer { width: 100%; max-width: 400px; margin: 20px auto; display: none; }
+        video { width: 100%; height: auto; border: 1px solid #ccc; border-radius: 5px; }
+        #status { margin-top: 10px; color: #333; }
+        #pendingCount { font-weight: bold; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+        .camera-btn { background-color: #4CAF50; }
+        .stop-btn { background-color: #f44336; }
+        .scan-result { padding: 10px; margin: 10px 0; border-radius: 5px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body>
+    <h2>📚 Student Attendance Scanner</h2>
+    
+    <div id="studentInfo">
+        <label>Your Full Name:</label>
+        <input type="text" id="studentName" placeholder="Enter your full name" required>
+        
+        <label>Student ID:</label>
+        <input type="text" id="studentId" placeholder="Enter your ID" required>
+        
+        <button onclick="saveStudentInfo()" style="background-color: #4CAF50;">💾 Save My Info</button>
+    </div>
+    
+    <hr>
+    
+    <!-- Camera controls - ALWAYS VISIBLE once info is saved -->
+    <div id="cameraControls" style="display:none;">
+        <h3>📷 Scan QR Code</h3>
+        <button onclick="startScanner()" class="camera-btn" id="startCameraBtn">▶️ Start Camera</button>
+        <button onclick="stopScanner()" class="stop-btn" id="stopCameraBtn" style="display:none;">⏹️ Stop Camera</button>
+        
+        <div id="videoContainer">
+            <video id="video" playsinline></video>
+        </div>
+        
+        <div id="scanResult" class="scan-result"></div>
+    </div>
+    
+    <hr>
+    
+    <div>
+        <h3>📋 Pending Attendance: <span id="pendingCount">0</span></h3>
+        <button onclick="syncAttendance()" style="background-color: #ff9800;">🔄 Sync Now (if online)</button>
+        <button onclick="viewPending()" style="background-color: #9c27b0; color: white;">👁️ View Pending</button>
+        <button onclick="clearAllData()" style="background-color: #f44336;">🗑️ Clear All Data</button>
+    </div>
+    
+    <div id="status"></div>
+    <pre id="pendingList" style="background:#f4f4f4; padding:10px; display:none; overflow:auto;"></pre>
+
+    <script>
+        // =============================================
+        // YOUR APPS SCRIPT URL
+        // =============================================
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzgYw-2YMjmZKQl83r11ya9NoUkpBFA4NdF5RolHqwcEYlPHjBCFLXoVxosMcEaZT-8sw/exec';
+        
+        const PENDING_QUEUE_KEY = 'attendanceQueue';
+        const STUDENT_INFO_KEY = 'studentInfo';
+        
+        let videoStream = null;
+        let scanning = false;
+        let scanTimeout = null;
+        
+        // Load saved info when page opens
+        window.onload = function() {
+            loadStudentInfo();
+            updatePendingCount();
+            checkSavedInfo();
+        };
+        
+        function loadStudentInfo() {
+            const saved = localStorage.getItem(STUDENT_INFO_KEY);
+            if (saved) {
+                const info = JSON.parse(saved);
+                document.getElementById('studentName').value = info.name || '';
+                document.getElementById('studentId').value = info.id || '';
+            }
+        }
+        
+        function checkSavedInfo() {
+            if (localStorage.getItem(STUDENT_INFO_KEY)) {
+                document.getElementById('cameraControls').style.display = 'block';
+                document.getElementById('status').innerHTML = '<span class="success">✅ Ready to scan! Click "Start Camera"</span>';
+            }
+        }
+        
+        function saveStudentInfo() {
+            const name = document.getElementById('studentName').value.trim();
+            const id = document.getElementById('studentId').value.trim();
+            
+            if (!name || !id) {
+                alert('Please enter both name and ID');
+                return;
+            }
+            
+            localStorage.setItem(STUDENT_INFO_KEY, JSON.stringify({ name, id }));
+            
+            // Show camera controls
+            document.getElementById('cameraControls').style.display = 'block';
+            document.getElementById('status').innerHTML = '<span class="success">✅ Info saved! Click "Start Camera" to begin scanning.</span>';
+            
+            alert('Info saved successfully!');
+        }
+        
+        function startScanner() {
+            if (!localStorage.getItem(STUDENT_INFO_KEY)) {
+                alert('Please save your info first.');
+                return;
+            }
+            
+            // Hide start button, show stop button
+            document.getElementById('startCameraBtn').style.display = 'none';
+            document.getElementById('stopCameraBtn').style.display = 'block';
+            document.getElementById('videoContainer').style.display = 'block';
+            
+            const video = document.getElementById('video');
+            
+            if (videoStream) {
+                stopScanner();
+            }
+            
+            document.getElementById('status').innerHTML = '<span class="info">📱 Requesting camera access...</span>';
+            
+            // Check if on iOS
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
+            if (isIOS) {
+                document.getElementById('status').innerHTML = '<span class="info">📱 iOS detected. Please allow camera when prompted.</span>';
+            }
+            
+            const constraints = {
+                video: {
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+            
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    videoStream = stream;
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', true);
+                    video.setAttribute('autoplay', true);
+                    video.setAttribute('muted', true);
+                    
+                    return video.play();
+                })
+                .then(() => {
+                    scanning = true;
+                    document.getElementById('status').innerHTML = '<span class="success">✅ Camera ready! Point at QR code.</span>';
+                    scanFrame();
+                })
+                .catch(err => {
+                    console.error('Camera error:', err);
+                    
+                    // Reset buttons
+                    document.getElementById('startCameraBtn').style.display = 'block';
+                    document.getElementById('stopCameraBtn').style.display = 'none';
+                    document.getElementById('videoContainer').style.display = 'none';
+                    
+                    let errorMsg = '❌ Cannot access camera. ';
+                    
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        errorMsg = '❌ Camera permission denied.\n\n';
+                        if (isIOS) {
+                            errorMsg += '📱 ON iPHONE:\n';
+                            errorMsg += '1. Go to Settings → Safari → Camera\n';
+                            errorMsg += '2. Select "Allow"\n';
+                            errorMsg += '3. Also try: Settings → Privacy → Camera → Safari\n';
+                            errorMsg += '4. Refresh this page and try again';
+                        } else {
+                            errorMsg += '🔴 ON ANDROID:\n';
+                            errorMsg += '1. Tap the lock icon in address bar\n';
+                            errorMsg += '2. Tap "Site settings"\n';
+                            errorMsg += '3. Set Camera to "Allow"\n';
+                            errorMsg += '4. Reload page';
+                        }
+                    } else {
+                        errorMsg += 'Error: ' + err.message;
+                    }
+                    
+                    alert(errorMsg);
+                    document.getElementById('status').innerHTML = '<span class="error">' + errorMsg.replace(/\n/g, '<br>') + '</span>';
+                });
+        }
+        
+        function stopScanner() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            scanning = false;
+            if (scanTimeout) {
+                cancelAnimationFrame(scanTimeout);
+                scanTimeout = null;
+            }
+            
+            document.getElementById('video').srcObject = null;
+            document.getElementById('videoContainer').style.display = 'none';
+            document.getElementById('startCameraBtn').style.display = 'block';
+            document.getElementById('stopCameraBtn').style.display = 'none';
+            document.getElementById('status').innerHTML = '<span class="info">📷 Camera stopped</span>';
+        }
+        
+        function scanFrame() {
+            if (!scanning) return;
+            
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                try {
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    
+                    if (code) {
+                        stopScanner();
+                        processScannedCode(code.data);
+                        return;
+                    }
+                } catch (e) {
+                    console.error('QR scan error:', e);
+                }
+            }
+            
+            scanTimeout = requestAnimationFrame(scanFrame);
+        }
+        
+        function processScannedCode(data) {
+            try {
+                const lectureData = JSON.parse(data);
+                
+                if (!lectureData.lectureId || !lectureData.course) {
+                    throw new Error('Invalid QR data');
+                }
+                
+                const studentInfo = JSON.parse(localStorage.getItem(STUDENT_INFO_KEY));
+                const timestamp = new Date().toISOString();
+                
+                const record = {
+                    timestamp: timestamp,
+                    studentName: studentInfo.name,
+                    studentId: studentInfo.id,
+                    lectureId: lectureData.lectureId,
+                    course: lectureData.course,
+                    location: lectureData.location || 'Unknown',
+                    date: lectureData.date || 'Unknown',
+                    time: lectureData.time || 'Unknown'
+                };
+                
+                addToQueue(record);
+                
+                document.getElementById('scanResult').innerHTML = 
+                    `<span class="success">✅ Recorded: ${lectureData.course}<br>📍 ${lectureData.location || 'Unknown'}<br>📅 ${lectureData.date || 'Unknown'}</span>`;
+                
+                updatePendingCount();
+                
+                // Ask to scan another
+                setTimeout(() => {
+                    if (confirm('Scan another QR code?')) {
+                        startScanner();
+                    }
+                }, 1000);
+                
+            } catch (e) {
+                alert('Invalid QR code. Please scan teacher\'s QR.');
+                console.error(e);
+            }
+        }
+        
+        function getQueue() {
+            const queue = localStorage.getItem(PENDING_QUEUE_KEY);
+            return queue ? JSON.parse(queue) : [];
+        }
+        
+        function addToQueue(record) {
+            const queue = getQueue();
+            queue.push(record);
+            localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+        }
+        
+        function updatePendingCount() {
+            const queue = getQueue();
+            document.getElementById('pendingCount').innerText = queue.length;
+        }
+        
+        function viewPending() {
+            const queue = getQueue();
+            const pre = document.getElementById('pendingList');
+            
+            if (pre.style.display === 'none' || pre.style.display === '') {
+                pre.style.display = 'block';
+                pre.textContent = JSON.stringify(queue, null, 2);
+            } else {
+                pre.style.display = 'none';
+            }
+        }
+        
+        function clearAllData() {
+            if (confirm('Delete all saved info and attendance records?')) {
+                localStorage.removeItem(STUDENT_INFO_KEY);
+                localStorage.removeItem(PENDING_QUEUE_KEY);
+                location.reload();
+            }
+        }
+        
+        function syncAttendance() {
+            const queue = getQueue();
+            
+            if (queue.length === 0) {
+                alert('No pending records to sync.');
+                return;
+            }
+            
+            document.getElementById('status').innerHTML = '<span class="info">🔄 Syncing...</span>';
+            
+            let successCount = 0;
+            let failedIndices = [];
+            
+            function syncNext(index) {
+                if (index >= queue.length) {
+                    if (failedIndices.length > 0) {
+                        const newQueue = queue.filter((_, i) => failedIndices.includes(i));
+                        localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(newQueue));
+                        document.getElementById('status').innerHTML = 
+                            `<span class="error">⚠️ Synced ${successCount}, failed ${failedIndices.length}</span>`;
+                    } else {
+                        localStorage.removeItem(PENDING_QUEUE_KEY);
+                        document.getElementById('status').innerHTML = '<span class="success">✅ All synced successfully!</span>';
+                    }
+                    updatePendingCount();
+                    return;
+                }
+                
+                const record = queue[index];
+                const payload = {
+                    target: 'attendance',
+                    ...record
+                };
+                
+                fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(() => {
+                    successCount++;
+                    syncNext(index + 1);
+                })
+                .catch(error => {
+                    console.error('Sync failed:', error);
+                    failedIndices.push(index);
+                    syncNext(index + 1);
+                });
+            }
+            
+            syncNext(0);
+        }
+    </script>
+</body>
+</html>
